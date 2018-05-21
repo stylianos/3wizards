@@ -1,0 +1,578 @@
+﻿using UnityEngine;
+using System.Collections;
+using UnityEngine.UI;
+
+public class PizzaSpell : MonoBehaviour {
+
+    public bool IS_DEAD = false; 
+	public const int SPELL_RED = 1;
+	public const int SPELL_GREEN = 2;
+	public const int SPELL_WHITE = 3;
+
+	public const int SPELL_RGW = SPELL_RED * 100 + SPELL_GREEN * 10 + SPELL_WHITE;
+    public const int SPELL_RWG = SPELL_RED * 100 + SPELL_WHITE * 10 + SPELL_GREEN;
+	public const int SPELL_GRW = SPELL_GREEN * 100 + SPELL_RED * 10 + SPELL_WHITE;
+	public const int SPELL_GWR = SPELL_GREEN * 100 + SPELL_WHITE * 10 + SPELL_RED;
+	public const int SPELL_WRG = SPELL_WHITE * 100 + SPELL_RED * 10 + SPELL_GREEN;
+	public const int SPELL_WGR = SPELL_WHITE * 100 + SPELL_GREEN * 10 + SPELL_RED;
+
+	public Wiz[] m_wizards;
+	public SpellPanel[] m_panels;
+	public Image[] m_vertical_panels;
+    public GameObject m_fireball_prefab;
+
+    public GameObject[] m_pizza_slice;
+    public GameObject[] m_pizza_slice_items;
+
+    //particles
+    public GameObject m_fireball_particle_init;
+    public GameObject m_fireball_particle_air;
+    public GameObject m_fireball_particle_end;
+    public GameObject m_float_particle_init;
+    public GameObject m_float_particle_air;
+    public GameObject m_wandspell_red_init;
+    public GameObject m_wandspell_green_init;
+    public GameObject m_wandspell_white_init;
+    public GameObject m_chicken_transformation;
+    public GameObject m_dash_particle_air;
+
+    public Text m_level_timer = null;
+    public int m_level_total_time = 120;
+    protected float m_level_current_time = 0.0f;
+
+    int[] m_spell = new int[3];
+	int m_spell_count = 0;
+
+	public float m_spell_item_max_time = 2.0f;
+	public float m_spell_cooldown_time = 0.05f;
+	public float m_spell_show_time = 1.0f;
+
+	protected float m_spell_item_time = 0.0f;
+	protected float m_current_cooldown = 0.0f;
+	protected float m_current_show = 0.0f;
+
+	public bool m_paused = false;
+
+    public bool m_is_chicken_level = false;
+
+    // Use this for initialization
+
+    //added by Alex
+    private Trigger_Spell trigSpell;
+
+
+    public string m_destination_level;
+
+	void Start () {
+        m_panels = new SpellPanel[6];
+        for (int i = 0; i < 6; ++i)
+        {
+            m_panels[i] = GameObject.Find("Panel" + (i + 1).ToString()).GetComponent<SpellPanel>();
+        }
+
+        m_wizards = new Wiz[3];
+        for (int i = 0; i < 3; ++i)
+        {
+            m_wizards[i] = GameObject.Find("Wizard" + (i + 1).ToString()).GetComponent<Wiz>();
+        }
+
+        m_vertical_panels = new Image[3];
+        m_vertical_panels[0] = GameObject.Find("PanelA").GetComponent<Image>();
+        m_vertical_panels[1] = GameObject.Find("PanelB").GetComponent<Image>();
+        m_vertical_panels[2] = GameObject.Find("PanelC").GetComponent<Image>();
+
+        m_level_timer = GameObject.Find("LevelTimer").GetComponent<Text>();
+
+
+        //added by Alex
+        trigSpell = (Trigger_Spell)FindObjectOfType(typeof(Trigger_Spell));
+        m_fireball_prefab = (GameObject)Resources.Load("fireball");
+        m_fireball_particle_end = (GameObject)Resources.Load("FireBallParticle_End");
+        m_float_particle_init = (GameObject)Resources.Load("JumpParticle_Init");
+        m_float_particle_air = (GameObject)Resources.Load("JumpParticle_Air");
+        m_wandspell_red_init = (GameObject)Resources.Load("WandParticleRed");
+        m_wandspell_green_init = (GameObject)Resources.Load("WandParticleGreen");
+        m_wandspell_white_init = (GameObject)Resources.Load("WandParticleWhite");
+        m_chicken_transformation = (GameObject)Resources.Load("ChickenTransformParticle");
+        m_dash_particle_air = (GameObject)Resources.Load("DashParticle_Air");
+
+        m_level_current_time = (float)m_level_total_time;
+
+        refresh_spell_book();
+
+        if (m_is_chicken_level == true)
+        {
+            foreach (Wiz w in m_wizards)
+            {
+                if (w != null)
+                {
+                    w.launch_chicken();
+                }
+            }
+        }
+    }
+
+    void update_time_text()
+    {
+        if (m_level_timer == null)
+        {
+            return;
+        }
+        if (m_level_total_time == 0)
+        {
+            m_level_timer.gameObject.SetActive(false);
+        }
+         
+        int minutes = (int)m_level_current_time / 60;
+        int seconds = (int)m_level_current_time % 60;
+        string text = string.Format("{0:00}:{1:00}", minutes, seconds);
+        m_level_timer.text = text;
+    }
+
+    public void clear_spell()
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			m_spell[i] = 0;
+		}
+		m_spell_count = 0;
+		m_spell_item_time = 0.0f;
+		refresh_spell_book();
+        for (int i = 0; i < 3; ++i)
+        {
+            m_pizza_slice[i].SetActive(false);
+        }
+    }
+
+	public int get_item(int pos)
+	{
+		return m_spell[pos];
+	}
+	
+	// Update is called once per frame
+	void Update () {
+	
+	}
+
+    IEnumerator ChangeLevel()
+    {
+        float secs = GetComponent<Fading>().BeginFade(1.0f);
+        yield return new WaitForSeconds(secs);
+        Application.LoadLevel(m_destination_level);
+    }
+
+    public void restart_level()
+    {
+        m_destination_level = Application.loadedLevelName;
+
+        StartCoroutine(ChangeLevel());
+    }
+
+    public void change_level(string i_level)
+    {
+        m_destination_level = i_level;
+
+        StartCoroutine(ChangeLevel());
+    }
+
+    void FixedUpdate()
+	{
+        if (Application.isEditor)
+        {
+            if (Input.GetKeyDown("1"))
+            {
+                launch_fireball();
+            }
+            if (Input.GetKeyDown("2"))
+            {
+                launch_chicken();
+            }
+            if (Input.GetKeyDown("3"))
+            {
+                launch_float();
+            }
+            if (Input.GetKeyDown("4"))
+            {
+                launch_dash();
+            }
+            if (Input.GetKeyDown("5"))
+            {
+                launch_gravity();
+            }
+            if (Input.GetKeyDown("6"))
+            {
+                launch_ghost();
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            restart_level();
+        }
+        if (m_paused)
+		{
+			return;
+		}
+        m_level_current_time = Mathf.Max(m_level_current_time - Time.deltaTime, 0.0f);
+        update_time_text();
+
+        if (m_level_total_time > 0 && m_level_current_time <= 0.0f)
+        {
+            restart_level();
+            m_level_total_time = 0;
+        }
+
+        if (m_current_cooldown > 0.0f)
+		{
+			m_current_cooldown = Mathf.Max(0.0f, m_current_cooldown - Time.deltaTime);
+		}
+		if (m_current_show > 0.0f)
+		{
+			m_current_show = Mathf.Max(0.0f, m_current_show - Time.deltaTime);
+			if (m_current_show <= 0.0f)
+			{
+				refresh_spell_book();
+			}
+		}
+        if (m_spell_count > 0)
+		{
+			m_spell_item_time += Time.deltaTime;
+			if (m_spell_item_time >= m_spell_item_max_time)
+			{
+				spell_failed();
+			}
+        }
+	}
+
+	public void add_red()
+	{
+		add_spell_item(SPELL_RED);
+	}
+
+	public void add_green()
+	{
+		add_spell_item(SPELL_GREEN);
+	}
+
+	public void add_white()
+	{
+		add_spell_item(SPELL_WHITE);
+	}
+
+	public void add_spell_item(int item)
+	{
+		if (m_spell_count >= 3)
+		{
+			return;
+		}
+		if (m_current_cooldown > 0.0f)
+		{
+			cooldown();
+			return;
+		}
+		for (int i = 0; i < m_spell_count; ++i)
+		{
+			if (m_spell[i] == item)
+			{
+				ingredient_already_added();
+				return;
+			}
+        }
+
+        if (item == SPELL_RED)
+        {
+            Vector2 pos_start_red = m_wizards[0].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_red = (GameObject)Object.Instantiate(m_wandspell_red_init, pos_start_red, m_wandspell_red_init.transform.rotation);
+            DestroyObject(spell_particle_red, 3.0f);
+            spell_particle_red.transform.parent = gameObject.transform;
+
+            SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_wizard_0);
+        }
+        else if (item == SPELL_GREEN)
+        {
+            Vector2 pos_start_green = m_wizards[1].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_green = (GameObject)Object.Instantiate(m_wandspell_green_init, pos_start_green, m_wandspell_green_init.transform.rotation);
+            DestroyObject(spell_particle_green, 3.0f);
+            spell_particle_green.transform.parent = gameObject.transform;
+
+            SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_wizard_1);
+        }
+        else if (item == SPELL_WHITE)
+        {
+            Vector2 pos_start_white = m_wizards[2].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_white = (GameObject)Object.Instantiate(m_wandspell_white_init, pos_start_white, m_wandspell_white_init.transform.rotation);
+            DestroyObject(spell_particle_white, 3.0f);
+            spell_particle_white.transform.parent = gameObject.transform;
+
+            SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_wizard_2);
+        }
+
+		m_current_show = 0.0f;
+		m_spell[m_spell_count] = item;
+		m_spell_count++;
+		m_spell_item_time = 0.0f;
+		refresh_spell_book();
+        if (m_spell_count >= 3)
+		{
+			launch_spell();
+
+            Vector2 pos_start_red = m_wizards[0].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_red = (GameObject)Object.Instantiate(m_wandspell_red_init, pos_start_red, m_wandspell_red_init.transform.rotation);
+            DestroyObject(spell_particle_red, 3.0f);
+            spell_particle_red.transform.parent = gameObject.transform;
+
+            Vector2 pos_start_green = m_wizards[1].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_green = (GameObject)Object.Instantiate(m_wandspell_green_init, pos_start_green, m_wandspell_green_init.transform.rotation);
+            DestroyObject(spell_particle_green, 3.0f);
+            spell_particle_green.transform.parent = gameObject.transform;
+
+            Vector2 pos_start_white = m_wizards[2].transform.TransformPoint(1.0f, 0.5f, 0.0f);
+            GameObject spell_particle_white = (GameObject)Object.Instantiate(m_wandspell_white_init, pos_start_white, m_wandspell_white_init.transform.rotation);
+            DestroyObject(spell_particle_white, 3.0f);
+            spell_particle_white.transform.parent = gameObject.transform;
+                
+        }
+	}
+
+	public void spell_failed()
+	{
+		clear_spell();
+	}
+
+	public void cooldown()
+	{
+
+	}
+
+	public void ingredient_already_added()
+	{
+
+	}
+
+	public int remaining_item()
+	{
+		if (m_spell_count < 2)
+		{
+			return 0;
+		}
+		for (int k = 1; k<=3; k++)
+		{
+			bool found = false;
+			for (int i = 0; i < 2; ++i)
+			{
+				if (m_spell[i] == k)
+				{
+					found = true;
+                    break;
+				}
+			}
+			if (!found)
+			{
+				return k;
+			}
+		}
+		return 0;
+	}
+
+	public void refresh_spell_book()
+	{
+        for (int i = 0; i < 3; ++i)
+        {
+            m_pizza_slice[i].SetActive(m_spell_count == i + 1);
+        }
+
+        for (int i=0; i<m_pizza_slice_items.Length; ++i)
+        {
+            m_pizza_slice_items[i].SetActive(false);
+        }
+        for (int i=0; i< m_spell_count; ++i)
+        {
+            int idx = m_spell[i];
+            m_pizza_slice_items[i * 3 + (idx - 1)].SetActive(true);
+        }
+
+        m_vertical_panels[0].enabled = m_spell_count == 0;
+		m_vertical_panels[1].enabled = m_spell_count == 1;
+		m_vertical_panels[2].enabled = m_spell_count == 2;
+		if (m_spell_count == 1)
+		{
+			int spell_val = m_spell[0];
+            for (int i=0; i< m_panels.Length; ++i)
+			{
+				m_panels[i].set_obscure((spell_val - 1) != i/2);
+            }
+		}
+		else if (m_spell_count >= 2)
+		{
+			foreach (SpellPanel panel in m_panels)
+			{
+				panel.set_obscure(true);
+			}
+			int val = m_spell[0] * 100 + m_spell[1] * 10 + remaining_item();
+            switch (val)
+			{
+				case SPELL_RGW:
+					{
+						m_panels[0].set_obscure(false);
+					}
+					break;
+				case SPELL_RWG:
+					{
+						m_panels[1].set_obscure(false);
+					}
+					break;
+				case SPELL_GRW:
+					{
+						m_panels[2].set_obscure(false);
+					}
+					break;
+				case SPELL_GWR:
+					{
+						m_panels[3].set_obscure(false);
+					}
+					break;
+				case SPELL_WRG:
+					{
+						m_panels[4].set_obscure(false);
+					}
+					break;
+				case SPELL_WGR:
+					{
+						m_panels[5].set_obscure(false);
+					}
+					break;
+			}
+		}
+		else
+		{
+			foreach (SpellPanel panel in m_panels)
+			{
+				panel.set_obscure(false);
+			}
+		}
+	}
+
+	public void launch_spell()
+	{
+		m_current_cooldown = m_spell_cooldown_time;
+		m_current_show = m_spell_show_time;
+		m_spell_count = 0;
+		int val = m_spell[0] * 100 + m_spell[1] * 10 + m_spell[2];
+		switch (val)
+		{
+		case SPELL_RGW:
+			{
+                launch_fireball();
+			}
+			break;
+		case SPELL_RWG:
+			{
+                launch_chicken();
+            }
+            break;
+		case SPELL_GRW:
+			{
+               launch_float();
+			}
+			break;
+		case SPELL_GWR:
+			{
+				launch_dash();
+			}
+			break;
+		case SPELL_WRG:
+			{
+                launch_gravity();
+            }
+            break;
+		case SPELL_WGR:
+			{
+				launch_ghost();
+			}
+			break;
+		}
+    }
+
+	public void launch_float()
+	{
+		foreach (Wiz w in m_wizards)
+		{
+			if (w != null)
+			{
+				w.launch_float();
+			}
+		}
+        SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_spell_jump);
+    }
+
+	public void launch_fireball()
+	{
+		foreach (Wiz w in m_wizards)
+		{
+			if (w != null)
+			{
+				w.launch_fireball();
+			}
+		}
+        SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_spell_fireball);
+    }
+
+	public void launch_gravity()
+	{
+        //Physics2D.gravity = -1.0f * Physics2D.gravity;
+        foreach (Wiz w in m_wizards)
+        {
+            if (w != null)
+            {
+                w.apply_gravity();
+            }
+        }
+        SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_spell_gravity);
+    }
+
+	public void launch_dash()
+	{
+		foreach (Wiz w in m_wizards)
+		{
+			if (w != null)
+			{
+				w.launch_dash();
+			}
+		}
+        SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_spell_charge);
+    }
+
+	public void launch_chicken()
+	{
+        if (m_is_chicken_level)
+        {
+            return;
+        }
+
+        foreach (Wiz w in m_wizards)
+        {
+            if (w != null)
+            {
+                w.launch_chicken();
+            }
+        }
+        SoundController.Instance.PlaySoundOneShot(m_wizards[0].m_is_chicken ? SoundController.Instance.m_spell_chicken : SoundController.Instance.m_spell_chicken_end);
+    }
+
+	public void launch_ghost()
+	{
+        foreach (Wiz w in m_wizards)
+        {
+            if (w != null)
+            {
+                w.launch_ghost();
+            }
+        }
+        if (trigSpell != null)
+        {
+            //added by Alex
+            trigSpell.SpellCast();
+        }
+        SoundController.Instance.PlaySoundOneShot(SoundController.Instance.m_spell_dust);
+    }
+}
