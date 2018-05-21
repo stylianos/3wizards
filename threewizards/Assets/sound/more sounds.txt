@@ -1,0 +1,7 @@
+1. Explotion 
+2. Make fireball more... blasty
+3. Kill enemy sound
+4. Open door sound 
+5. Flip the switch sound
+6. Success sound
+7. Tomato! Pepper! Mushroom!

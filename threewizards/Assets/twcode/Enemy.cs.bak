@@ -1,0 +1,33 @@
+﻿using UnityEngine;
+using System.Collections;
+
+public class Enemy : MonoBehaviour {
+
+    public float m_move_speed = 5.0f;
+    protected float m_dir = 1.0f;
+    protected Rigidbody2D m_rb2d;
+
+    // Use this for initialization
+    void Start () {
+        m_rb2d = GetComponent<Rigidbody2D>();
+    }
+	
+	// Update is called once per frame
+	void FixedUpdate() {
+
+        Vector2 pos = m_rb2d.position;
+        float diff = m_dir * m_move_speed * Time.deltaTime;
+        Vector2 new_pos = new Vector2(pos.x + diff, pos.y);
+        m_rb2d.position = new_pos;
+    }
+
+
+    void OnTriggerEnter2D(Collider2D col)
+    {
+        if (col.gameObject.tag == "monster_wall")
+        {
+            m_dir = -m_dir;
+            transform.localScale = new Vector3(Mathf.Abs(transform.localScale.x) * m_dir, transform.localScale.y, transform.localScale.z);
+        }
+    }
+}
